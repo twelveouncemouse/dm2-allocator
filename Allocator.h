@@ -4,7 +4,7 @@
 #include <map>
 #include <memory>
 
-typedef std::pair<std::shared_ptr<void*>, std::shared_ptr<size_t>> ptr_info;
+typedef std::pair<std::shared_ptr<void*>, size_t> ptr_info;
 
 enum class AllocErrorType {
 	InvalidFree,
@@ -29,13 +29,11 @@ class Allocator;
 class Pointer {
 public:
 	Pointer();
-	Pointer(std::shared_ptr<void*> ptr, std::shared_ptr<size_t> size);
+	Pointer(std::shared_ptr<void*> ptr);
 	Pointer(const Pointer& src);
 	inline void *get() const;
-	inline void set(void* data, size_t size);
 private:
 	std::shared_ptr<void*> ptr;
-	std::shared_ptr<size_t> size;
 };
 
 class Allocator {
@@ -49,6 +47,8 @@ public:
 	void defrag();
 	std::string dump();
 private:
+	std::pair<void*, size_t> find_fittest_block(size_t N);
+	void free_impl(std::map<void*, ptr_info>::iterator existing_block);
 	void* base_ptr;
 	size_t max_size;
 	std::map<void*, ptr_info> allocated_blocks;

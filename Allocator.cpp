@@ -1,14 +1,14 @@
 #include "Allocator.h"
 
-Pointer::Pointer() : Pointer{ nullptr, nullptr }
+Pointer::Pointer() : Pointer{ nullptr }
 {
 }
 
-Pointer::Pointer(std::shared_ptr<void*> ptr, std::shared_ptr<size_t> size) : ptr{ ptr }, size{ size }
+Pointer::Pointer(std::shared_ptr<void*> ptr) : ptr{ ptr }
 {
 }
 
-Pointer::Pointer(const Pointer& src): Pointer { src.ptr, src.size }
+Pointer::Pointer(const Pointer& src) : Pointer{ src.ptr }
 {
 }
 
@@ -24,24 +24,12 @@ void* Pointer::get() const
 	}
 }
 
-void Pointer::set(void* data, size_t size)
-{
-	if (size > 0 && size < *(this->size))
-	{
-		memcpy(*ptr, data, size);
-	}
-	else
-	{
-		std::runtime_error("Couldn't set this amount of memory. Block size exceeded");
-	}
-}
-
 Allocator::Allocator(void *base, size_t size) : base_ptr{ base }, max_size{ size }
 {
 	free_blocks.emplace(base_ptr, size);
 }
 
-Pointer Allocator::alloc(size_t N)
+std::pair<void*, size_t> Allocator::find_fittest_block(size_t N)
 {
 	size_t min_size = SIZE_MAX;
 	void* ptr = nullptr;
@@ -54,9 +42,18 @@ Pointer Allocator::alloc(size_t N)
 		}
 	}
 
+	return std::pair<void*, size_t>(ptr, min_size);
+}
+
+Pointer Allocator::alloc(size_t N)
+{
+	auto fittest_block = find_fittest_block(N);
+	void* ptr = fittest_block.first;
+	size_t size = fittest_block.second;
+
 	if (ptr != nullptr)
 	{
-		size_t rest_size = min_size - N;
+		size_t rest_size = size - N;
 		free_blocks.erase(ptr);
 		if (rest_size > 0)
 		{
@@ -64,11 +61,9 @@ Pointer Allocator::alloc(size_t N)
 		}
 
 		std::shared_ptr<void*> addr(new void*);
-		std::shared_ptr<size_t> sz(new size_t);
 		*addr = ptr;
-		*sz = N;
-		allocated_blocks.emplace(ptr, ptr_info(addr, sz));
-		return Pointer(addr, sz);
+		allocated_blocks.emplace(ptr, ptr_info(addr, N));
+		return Pointer(addr);
 	}
 	else
 	{
@@ -89,9 +84,8 @@ void Allocator::free(Pointer &p)
 	if (existing_block == allocated_blocks.end())
 	{
 		return;
-		//throw AllocError(AllocErrorType::InvalidFree, "Free of non-allocated block");
 	}
-	size_t existing_block_size = *(existing_block->second.second);
+	size_t existing_block_size = existing_block->second.second;
 
 	for (auto free_block : free_blocks)
 	{
@@ -102,18 +96,22 @@ void Allocator::free(Pointer &p)
 			size_t new_free_block_size = free_block.second + existing_block_size;
 			free_blocks.erase(free_block.first);
 			free_blocks.emplace(new_free_block_ptr, new_free_block_size);
-			
-			*(existing_block->second.first) = nullptr;
-			*(existing_block->second.second) = 0;
-			
-			allocated_blocks.erase(address_to_free);
+
+			free_impl(existing_block);
 			return;
 		}
 	}
+	
 	free_blocks.emplace(existing_block->first, existing_block_size);
+	free_impl(existing_block);
+}
+
+void Allocator::free_impl(std::map<void*, ptr_info>::iterator existing_block)
+{
+	void* address_to_free = existing_block->first;
 
 	*(existing_block->second.first) = nullptr;
-	*(existing_block->second.second) = 0;
+	existing_block->second.second = 0;
 
 	allocated_blocks.erase(address_to_free);
 }
@@ -126,7 +124,7 @@ void Allocator::defrag()
 	for (auto block : allocated_blocks)
 	{
 		ptr_info info = block.second;
-		size_t block_size = *(info.second);
+		size_t block_size = info.second;
 		*(info.first) = current_ptr;
 		
 		new_heap.emplace(current_ptr, ptr_info(info.first, info.second));
