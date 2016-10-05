@@ -125,6 +125,11 @@ void Allocator::defrag()
 	{
 		ptr_info info = block.second;
 		size_t block_size = info.second;
+
+		// Move data
+		void* old_data_ptr = *(info.first);
+		memcpy(current_ptr, old_data_ptr, info.second);
+
 		*(info.first) = current_ptr;
 		
 		new_heap.emplace(current_ptr, ptr_info(info.first, info.second));
